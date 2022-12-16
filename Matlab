@@ -1,0 +1,141 @@
+% Initializing
+close all
+clear
+clc
+
+cvx_clear;
+% ---------------------------------------------
+
+% constants 
+eps = 10^(-3); dt = 0.01; tf = 15; epoks = tf / dt;
+% ---------------------------------------------
+
+% % I will work with mass spring damper problem, the following spans are
+% % range of each parameter expected changes
+% m = [2 3];
+% b = [1 1.2];
+% k = [10 15];
+% 
+% b_m = [min(b)/max(m), max(b)/min(m)];
+% k_m = [min(k)/max(m), max(k)/min(m)];
+% 
+% comb = combvec(-b_m, -k_m)';
+% [r, ~] = size(comb);
+% 
+% points_A = [zeros(r,1), ones(r,1), comb];
+% 
+% alpha = rand(1, r); 
+% alpha = alpha / sum(alpha);
+% 
+% m_m = min(m) + (max(m) - min(m))*rand();
+% 
+% A = reshape(sum(alpha'.*points_A), [2,2])';
+% B = [0; 1/m_m];
+
+m = 1;
+b = 10;
+k = 5;
+
+A = [0, 1; -k/m, -b/m];
+B = [0; 1/m];
+
+display(A);
+display(B);
+
+A = (dt*A + eye(length(A)));
+B = dt * B;
+% ---------------------------------------------
+
+% Generate the initial starting point of the system taking into
+% consideration that the system position starting range is [0 1] and
+% initial speed range is [-1 +1]
+x0_r = [0 1];
+xd0_r = [-1 +1];
+
+xx_0 = min(x0_r) + (max(x0_r) - min(x0_r))*rand();
+xx_dot_0 = min(xd0_r) + (max(xd0_r) - min(xd0_r))*rand();
+x0 = [xx_0; xx_dot_0];
+display(x0);
+
+% The initial zonotop must contain any starting point of the system and
+% could be the folowing: 
+c0 = [0.5; 0];
+G0 = [[0.5; 0] , [0; 1]];
+% ---------------------------------------------
+
+% The desired zonotop where the final point should be inside and the final
+% propogated zonotop must be contained inside this zonotop.
+x_star = [2; 0];
+G_star = [0.1, 0; 0, 0.2];
+% ---------------------------------------------
+
+% Solving the optimization problem
+cvx_begin
+    variable x(2, 1, epoks)
+    variable G(2, 2, epoks)
+    variable theta(1, 2, epoks)
+    variable u(1, 1, epoks)
+    
+    variable Gama(2, 2)
+    variable Beta_var(2, 1)
+    
+     x(:, 1, 1) == c0;
+     G(:, :, 1) == G0;
+    
+    cost_fun = 0;
+    for i = 1:epoks-1 
+       cost_fun = cost_fun + 0.1*norm(u(:, :, i+1) - u(:, :, i)); 
+       cost_fun = cost_fun + 0.1*norm(theta(:, :, i+1) - theta(:, :, i));
+%        cost_fun = cost_fun + norm(theta(:, :, i) + repmat(u(:, :, i), [1, 2]) ); 
+    end
+
+    minimize(cost_fun);
+    
+    subject to
+        for i = 1:epoks - 1
+            G(:, :, i+1) == A*G(:, :, i) + B*theta(:, :, i);
+            x(:, :, i+1) == A*x(:, :, i) + B*u(:, :, i);
+        end
+        G(:, :, end) == G_star*Gama;
+        x(:, :, end) - x_star == G_star * Beta_var;
+        norm([Gama, Beta_var], Inf) <= 1;
+cvx_end
+
+% check solution existance
+if strcmp(cvx_status , 'Solved')
+    disp("x(1)");disp(x(:,1))
+    disp("Initial x");disp(x0)
+    
+    disp("G(1)");display(G(:,:,1))
+    disp("Initial G");disp(G0)
+    
+    disp("x(end)");disp(x(:,end))
+    disp("x star");disp(x_star)
+    
+    disp("G(end)");disp(G(:,:,end))
+    disp("G star");disp(G_star)
+    
+    figure(1)
+    hold on
+    plot(x(1,end), x(2,end), 'k*');
+    
+    Z0 = zonotope(c0, G0);
+    Z_final = zonotope(x(:,end), G(:,:,end));
+    Z_star = zonotope(x_star, G_star);
+    
+    plot(Z0, [1 2], 'm');
+    plot(Z_final, [1 2], 'b');
+    plot(Z_star, [1 2], 'r');
+    
+    samples_n = numel(1:epoks);
+    
+    xp = zeros(5,samples_n);
+    yp = zeros(5,samples_n);
+    
+    for i=2:epoks
+       Z = zonotope(x(:, i), G(:, :, i));
+       plot(Z,[1 2],'g');
+    end
+else
+    disp("Problem is unsolvable");
+end
