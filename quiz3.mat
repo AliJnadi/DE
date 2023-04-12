@@ -1,0 +1,166 @@
+close All
+clear
+clc
+
+x = 0:3;
+y = exp(x);
+
+h = x(2: end) - x(1: end - 1);
+
+n_points = 4;
+n = n_points - 1;
+
+a = y';
+
+
+bb = zeros(n+1, 1);
+for i = 2 : n
+   bb(i) = 3*( ( a(i+1) - a(i) )/h(i) - ( a(i) - a(i - 1) )/h(i-1) ); 
+end
+
+A = zeros(n+1, n+1);
+
+A(1, 1) = 1; A(n+1, n+1) = 1;
+
+for i = 2: n
+    j = i - 1;
+    A(i, j) = h(j);
+    A(i, j+1) = 2*(h(j) + h(i));
+    A(i, j+2) = h(i);
+end
+
+% disp(A);
+% disp(bb);
+c = pinv(A)*bb;
+% c = (bb\A)';
+
+b = zeros(n+1, 1);
+d = zeros(n+1, 1);
+for i = 1 : n
+   b(i) = ( a(i+1) - a(i) )/h(i) - h(i)*( c(i+1) + 2*c(i) )/3;
+   d(i) = ( c(i+1) - c(i) )/(3*h(i));
+end
+
+
+P = [d, c, b, a];
+
+hold on
+x0 = linspace(0, 1, 100);
+x1 = linspace(1, 2, 100);
+x2 = linspace(2, 3, 100);
+t0 = x0 - x0(1);
+t1 = x1 - x1(1);
+t2 = x2 - x2(1);
+y0 = polyval(P(1, :), t0);
+y1 = polyval(P(2, :), t1);
+y2 = polyval(P(3, :), t2);
+plot(x0, y0, 'r')
+plot(x1, y1, 'r')
+plot(x2, y2, 'r')
+
+t = linspace(0, 3, 100);
+yy = exp(t);
+plot(t, yy, 'g');
+
+p_x = repmat([0, 0, 1, 0], [3, 1]);
+p_y = P(1: end-1, :);
+
+x = 1.7;
+y = 6;
+
+t = 0:3;
+p_x(:, 4) = t(1:end - 1);
+error = -1;
+idx = -1;
+t_val = -1;
+
+for i = 1:3
+   a_x = p_x(i, 4); a_y = p_y(i, 4);
+   b_x = p_x(i, 3); b_y = p_y(i, 3);
+   c_x = p_x(i, 2); c_y = p_y(i, 2);
+   d_x = p_x(i, 1); d_y = p_y(i, 1);
+
+   c0 = 2*a_x*b_x + 2*a_y*b_y - 2*b_x*x - 2*b_y*y;
+   c1 = 2*b_x^2 + 2*b_y^2  + 4*a_x*c_x + 4*a_y*c_y - 4*c_x*x - 4*c_y*y;
+   c2 = + 6*a_x*d_x + 6*b_x*c_x + 6*a_y*d_y + 6*b_y*c_y - 6*d_x*x - 6*d_y*y;
+   c3 = 8*b_x*d_x + 8*b_y*d_y + 4*c_x^2 + 4*c_y^2;
+   c4 = 10*c_x*d_x + 10*c_y*d_y;
+   c5 = 6*d_x^2 + 6*d_y^2;
+   
+   P_C = [c1, c2, c3, c4, c5];
+   
+   A = [-c4/c5, -c3/c5, -c2/c5, -c1/c5, -c0/c5;
+        1     , 0     , 0     , 0     , 0     ;
+        0     , 1     , 0     , 0     , 0     ;
+        0     , 0     , 1     , 0     , 0     ;
+        0     , 0     , 0     , 1     , 0     ];
+    
+   Optimal_cost = (real(eig(A))) + t(i);
+   Optimal_cost = Optimal_cost(Optimal_cost > 0);
+   
+   for j = 1 : length(Optimal_cost)
+       tt = Optimal_cost(j);
+       td = tt - t(i);
+       obj_ddot = P_C * [1, 2*td, 3*td^2, 4*td^3, 5*td^4]';
+
+       if(obj_ddot > 0)
+           if(tt >= t(i) && tt < t(i+1))
+                temp = sqrt( ( x - polyval( p_x(i, :), td ) )^2 + ( y - polyval( P(i, :), td ) )^2 );
+                if(error < 0)
+                    t_val = tt;
+                    y_val = polyval( P(i, :), td );
+                    error = temp;
+                    idx = i; 
+                elseif (error > temp)
+                    t_val = tt;
+                    y_val = polyval( P(i, :), td );
+                    error = temp;
+                    idx = i;
+                end 
+           end
+       end
+   end
+end
+
+% If no solution found
+
+disp("Closest point in the curve to point (" + x + ", " + y + ") is (" + t_val + ", " + y_val + ")");
+disp("error = " + error);
+disp("The index of the curve is = " + idx);
+
+plot(x, y, '*r');
+plot(t_val, y_val, '*k');
+plot([x, t_val], [y, y_val], '--b');
+
+% Validation
+d2 = sqrt((x - x2).^2 + (y - polyval(P(3, :), t2)).^2);
+d1 = sqrt((x - x1).^2 + (y - polyval(P(2, :), t1)).^2);
+d0 = sqrt((x - x0).^2 + (y - polyval(P(1, :), t0)).^2);
+d = [d0, d1, d2];
+figure
+hold on
+plot(x0, d0, 'r')
+plot(x1, d1, 'g')
+plot(x2, d2, 'b')
+[M, I] = min(d);
+ttt = [x0, x1, x2];
+disp("Validation using numerical solution");
+disp("Closest point in the curve to point (" + x + ", " + y + ") is (" + ttt(I) +")");
+disp("error = " + M);
+% syms t t_i real
+% syms x y real
+% syms a_x b_x c_x d_x real
+% syms a_y b_y c_y d_y real
+% 
+% p_x = [a_x, b_x, c_x, d_x];
+% p_y = [a_y, b_y, c_y, d_y];
+% 
+% h = [1, t - t_i, (t - t_i)^2, (t - t_i)^3]';
+% 
+% f_x = p_x*h;
+% f_y = p_y*h;
+% 
+% obj = (x - f_x)^2 + (y - f_y)^2;
+% 
+% obj_dot = diff(expand(obj), t);
+% return                                   
